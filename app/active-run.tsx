@@ -7,12 +7,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Pause, Play, Square, X } from 'lucide-react-native';
 import { AppColors } from '@/constants/AppColors';
-import { formatDistance, formatDuration, formatPace } from '@/utils/runUtils';
+import { formatDistance, formatDuration, formatPace, calcDistance } from '@/utils/runUtils';
 import {
   setActiveRunValue,
   getActiveRunValue,
   clearActiveRunState,
   getActiveRunPoints,
+  appendActiveRunPoint,
 } from '@/utils/database';
 import type { RoutePoint } from '@/utils/database';
 import {
@@ -37,6 +38,9 @@ export default function ActiveRunScreen() {
   // Wall-clock timer refs
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const runStateRef = useRef<RunState>('running');
+
+  // Foreground fallback subscription ref (used when background permission is denied)
+  const fgSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
 
   useEffect(() => { runStateRef.current = runState; }, [runState]);
 
@@ -145,8 +149,38 @@ export default function ActiveRunScreen() {
       await setActiveRunValue('is_paused', 'false');
       await setActiveRunValue('distance_meters', '0');
 
-      // Start background location task
-      await startBackgroundLocationTask();
+      if (bgStatus === 'granted') {
+        // Start background location task (works even when app is minimized)
+        await startBackgroundLocationTask();
+      } else {
+        // Fallback: foreground-only tracking via watchPositionAsync
+        console.log('[ActiveRun] background permission denied — using foreground-only tracking');
+        const sub = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.BestForNavigation,
+            timeInterval: 5000,
+            distanceInterval: 5,
+          },
+          async (loc) => {
+            const point: RoutePoint = {
+              lat: loc.coords.latitude,
+              lng: loc.coords.longitude,
+              timestamp: loc.timestamp,
+            };
+            const lastPointStr = await getActiveRunValue('last_point');
+            if (lastPointStr) {
+              const lastPoint: RoutePoint = JSON.parse(lastPointStr);
+              const d = calcDistance(lastPoint.lat, lastPoint.lng, point.lat, point.lng);
+              const currentDistStr = await getActiveRunValue('distance_meters');
+              const currentDist = currentDistStr ? parseFloat(currentDistStr) : 0;
+              await setActiveRunValue('distance_meters', String(currentDist + d));
+            }
+            await appendActiveRunPoint(point);
+            await setActiveRunValue('last_point', JSON.stringify(point));
+          }
+        );
+        fgSubscriptionRef.current = sub;
+      }
 
       // Start UI refresh
       startUITimer();
@@ -154,6 +188,7 @@ export default function ActiveRunScreen() {
 
     return () => {
       stopUITimer();
+      fgSubscriptionRef.current?.remove();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -189,6 +224,8 @@ export default function ActiveRunScreen() {
   const handleFinish = async () => {
     console.log('[ActiveRun] finish pressed');
     stopUITimer();
+    fgSubscriptionRef.current?.remove();
+    fgSubscriptionRef.current = null;
     await stopBackgroundLocationTask();
 
     // Final sync
@@ -225,6 +262,8 @@ export default function ActiveRunScreen() {
         onPress: async () => {
           console.log('[ActiveRun] discard confirmed — stopping task and going back');
           stopUITimer();
+          fgSubscriptionRef.current?.remove();
+          fgSubscriptionRef.current = null;
           await stopBackgroundLocationTask();
           await clearActiveRunState();
           router.back();

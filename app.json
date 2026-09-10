@@ -19,10 +19,9 @@
         "UIBackgroundModes": [
           "location"
         ],
-        "NSLocationWhenInUseUsageDescription": "Asphalt Run precisa da sua localização para rastrear corridas."
-      },
-      "config": {
-        "googleMapsApiKey": ""
+        "NSLocationWhenInUseUsageDescription": "Asphalt Run precisa da sua localização para rastrear corridas.",
+        "NSLocationAlwaysUsageDescription": "Asphalt Run precisa da sua localização em segundo plano para continuar rastreando sua corrida com o app minimizado.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Asphalt Run precisa da sua localização em segundo plano para continuar rastreando sua corrida com o app minimizado."
       }
     },
     "android": {
@@ -31,11 +30,6 @@
         "backgroundColor": "#1C1F22"
       },
       "package": "com.asphaltrun.app",
-      "config": {
-        "googleMaps": {
-          "apiKey": ""
-        }
-      },
       "permissions": [
         "ACCESS_BACKGROUND_LOCATION",
         "ACCESS_FINE_LOCATION",
@@ -49,14 +43,12 @@
     "plugins": [
       "expo-font",
       "expo-router",
-      "expo-web-browser",
-      "expo-secure-store",
       "expo-sqlite",
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Asphalt Run precisa da sua localiza\u00e7\u00e3o em segundo plano para continuar rastreando sua corrida com o app minimizado.",
-          "locationWhenInUsePermission": "Asphalt Run precisa da sua localiza\u00e7\u00e3o para rastrear corridas.",
+          "locationAlwaysAndWhenInUsePermission": "Asphalt Run precisa da sua localização em segundo plano para continuar rastreando sua corrida com o app minimizado.",
+          "locationWhenInUsePermission": "Asphalt Run precisa da sua localização para rastrear corridas.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true
         }

@@ -14,15 +14,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.asphaltrun.app",
-      "config": { "googleMapsApiKey": "SUBSTITUA_PELA_CHAVE_GOOGLE_MAPS" },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "location"
         ],
-        "NSLocationWhenInUseUsageDescription": "Asphalt Run precisa da sua localização para rastrear corridas.",
-        "NSLocationAlwaysUsageDescription": "Asphalt Run precisa da sua localização em segundo plano para continuar rastreando sua corrida com o app minimizado.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Asphalt Run precisa da sua localização em segundo plano para continuar rastreando sua corrida com o app minimizado."
+        "NSLocationWhenInUseUsageDescription": "Asphalt Run precisa da sua localiza\u00e7\u00e3o para rastrear corridas.",
+        "NSLocationAlwaysUsageDescription": "Asphalt Run precisa da sua localiza\u00e7\u00e3o em segundo plano para continuar rastreando sua corrida com o app minimizado.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Asphalt Run precisa da sua localiza\u00e7\u00e3o em segundo plano para continuar rastreando sua corrida com o app minimizado."
       }
     },
     "android": {
@@ -35,8 +34,7 @@
         "ACCESS_BACKGROUND_LOCATION",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
-      ],
-      "config": { "googleMaps": { "apiKey": "SUBSTITUA_PELA_CHAVE_GOOGLE_MAPS" } }
+      ]
     },
     "web": {
       "favicon": "./assets/images/newly.png",
@@ -49,8 +47,8 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Asphalt Run precisa da sua localização em segundo plano para continuar rastreando sua corrida com o app minimizado.",
-          "locationWhenInUsePermission": "Asphalt Run precisa da sua localização para rastrear corridas.",
+          "locationAlwaysAndWhenInUsePermission": "Asphalt Run precisa da sua localiza\u00e7\u00e3o em segundo plano para continuar rastreando sua corrida com o app minimizado.",
+          "locationWhenInUsePermission": "Asphalt Run precisa da sua localiza\u00e7\u00e3o para rastrear corridas.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true
         }

@@ -11,9 +11,6 @@ import { StatusBar } from "expo-status-bar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppColors } from "@/constants/AppColors";
 
-const DevErrorBoundary = __DEV__
-  ? ErrorBoundary
-  : ({ children }: { children: React.ReactNode }) => <>{children}</>;
 
 SplashScreen.preventAutoHideAsync();
 
@@ -46,7 +43,7 @@ export default function RootLayout() {
   if (!loaded) return null;
 
   return (
-    <DevErrorBoundary>
+    <ErrorBoundary>
       <StatusBar style="light" animated />
       <ThemeProvider value={AsphaltTheme}>
         <SafeAreaProvider>
@@ -60,6 +57,6 @@ export default function RootLayout() {
           </GestureHandlerRootView>
         </SafeAreaProvider>
       </ThemeProvider>
-    </DevErrorBoundary>
+    </ErrorBoundary>
   );
 }

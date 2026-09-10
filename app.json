@@ -14,6 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.asphaltrun.app",
+      "config": { "googleMapsApiKey": "SUBSTITUA_PELA_CHAVE_GOOGLE_MAPS" },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
@@ -34,7 +35,8 @@
         "ACCESS_BACKGROUND_LOCATION",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
-      ]
+      ],
+      "config": { "googleMaps": { "apiKey": "SUBSTITUA_PELA_CHAVE_GOOGLE_MAPS" } }
     },
     "web": {
       "favicon": "./assets/images/newly.png",

@@ -34,6 +34,7 @@ export default function ActiveRunScreen() {
   const [distanceMeters, setDistanceMeters] = useState(0);
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
   const [locationPermission, setLocationPermission] = useState<boolean | null>(null);
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
 
   // Wall-clock timer refs
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -69,14 +70,16 @@ export default function ActiveRunScreen() {
 
   // Sync state from SQLite (called on foreground return and on interval)
   const syncFromStorage = useCallback(async () => {
-    const [elapsed, dist, points] = await Promise.all([
+    const [elapsed, dist, points, accuracyStr] = await Promise.all([
       computeElapsed(),
       getActiveRunValue('distance_meters').then(v => v ? parseFloat(v) : 0),
       getActiveRunPoints(),
+      getActiveRunValue('last_accuracy'),
     ]);
     setElapsedSeconds(elapsed);
     setDistanceMeters(dist);
     setRoutePoints(points);
+    setGpsAccuracy(accuracyStr ? parseFloat(accuracyStr) : null);
 
     // Pan map to last point
     if (points.length > 0) {
@@ -170,6 +173,7 @@ export default function ActiveRunScreen() {
 
             // Filter 1: discard points with poor GPS accuracy
             const accuracy = loc.coords.accuracy ?? Infinity;
+            await setActiveRunValue('last_accuracy', String(accuracy));
             if (accuracy > 20) {
               console.log('[ActiveRun] discarding point — accuracy too low:', accuracy.toFixed(1), 'm');
               return;
@@ -338,6 +342,9 @@ export default function ActiveRunScreen() {
           </View>
         </View>
         {isPaused && <Text style={styles.pausedLabel}>PAUSADO</Text>}
+        {gpsAccuracy !== null && gpsAccuracy > 20 && (
+          <Text style={styles.weakGpsLabel}>Sinal de GPS fraco</Text>
+        )}
       </View>
 
       {/* Map */}
@@ -383,6 +390,7 @@ const styles = StyleSheet.create({
   metricLabel: { fontSize: 12, color: AppColors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.6 },
   metricDivider: { width: StyleSheet.hairlineWidth, height: 36, backgroundColor: AppColors.textSecondary + '66' },
   pausedLabel: { fontSize: 12, color: AppColors.accent, fontWeight: '600', letterSpacing: 1.5 },
+  weakGpsLabel: { fontSize: 12, color: AppColors.textSecondary },
   mapContainer: { flex: 1 },
   controls: { flexDirection: 'row', paddingHorizontal: 24, paddingTop: 16, gap: 12, backgroundColor: AppColors.background },
   pauseButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 12, borderWidth: 1.5, borderColor: AppColors.textSecondary + '88' },

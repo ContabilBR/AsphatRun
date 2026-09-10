@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Asphalt Run",
-    "slug": "asphalt-run-qlfeip",
+    "slug": "asphalt-run",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon-fnh.png",

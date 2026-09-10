@@ -40,6 +40,7 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }: any) =>
 
       // Filter 1: discard points with poor GPS accuracy
       const accuracy = loc.coords.accuracy ?? Infinity;
+      await setActiveRunValue('last_accuracy', String(accuracy));
       if (accuracy > 20) {
         console.log('[BGTask] discarding point — accuracy too low:', accuracy.toFixed(1), 'm');
         continue;

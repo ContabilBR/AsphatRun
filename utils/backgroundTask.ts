@@ -38,20 +38,36 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }: any) =>
 
       console.log('[BGTask] recording point', { lat: point.lat, lng: point.lng });
 
+      // Filter 1: discard points with poor GPS accuracy
+      const accuracy = loc.coords.accuracy ?? Infinity;
+      if (accuracy > 20) {
+        console.log('[BGTask] discarding point — accuracy too low:', accuracy.toFixed(1), 'm');
+        continue;
+      }
+
       // Get last point to accumulate distance
       const lastPointStr = await getActiveRunValue('last_point');
       if (lastPointStr) {
         const lastPoint: RoutePoint = JSON.parse(lastPointStr);
         const d = calcDistance(lastPoint.lat, lastPoint.lng, point.lat, point.lng);
-        const currentDistStr = await getActiveRunValue('distance_meters');
-        const currentDist = currentDistStr ? parseFloat(currentDistStr) : 0;
-        const newDist = currentDist + d;
-        console.log('[BGTask] distance delta', d.toFixed(1), 'm, total', newDist.toFixed(1), 'm');
-        await setActiveRunValue('distance_meters', String(newDist));
+        if (d >= 3) {
+          const currentDistStr = await getActiveRunValue('distance_meters');
+          const currentDist = currentDistStr ? parseFloat(currentDistStr) : 0;
+          const newDist = currentDist + d;
+          console.log('[BGTask] distance delta', d.toFixed(1), 'm, total', newDist.toFixed(1), 'm');
+          await setActiveRunValue('distance_meters', String(newDist));
+          await appendActiveRunPoint(point);
+          await setActiveRunValue('last_point', JSON.stringify(point));
+        } else {
+          console.log('[BGTask] skipping accumulation — delta too small:', d.toFixed(2), 'm');
+          await appendActiveRunPoint(point);
+          // do NOT update distance_meters or last_point
+        }
+      } else {
+        // No last_point yet — this is the first point, always record it
+        await appendActiveRunPoint(point);
+        await setActiveRunValue('last_point', JSON.stringify(point));
       }
-
-      await appendActiveRunPoint(point);
-      await setActiveRunValue('last_point', JSON.stringify(point));
     }
   } catch (err: any) {
     console.log('[BGTask] unhandled error in task callback:', err?.message ?? String(err));

@@ -50,7 +50,6 @@
           "locationWhenInUsePermission": "Asphalt Run precisa da sua localização para rastrear corridas."
         }
       ],
-      "react-native-maps"
     ],
     "scheme": "asphaltrun",
     "experiments": {

@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "Asphalt Run",
+    "slug": "asphalt-run",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/app-icon-fnh.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/images/app-icon-fnh.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1C1F22"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.placeholder.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "config": {
+        "googleMapsApiKey": ""
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/app-icon-fnh.png",
+        "backgroundColor": "#1C1F22"
+      },
+      "package": "com.placeholder.app",
+      "config": {
+        "googleMaps": {
+          "apiKey": ""
+        }
+      }
+    },
+    "web": {
+      "favicon": "./assets/images/newly.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-router",
+      "expo-web-browser",
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Asphalt Run precisa da sua localização para rastrear corridas.",
+          "locationWhenInUsePermission": "Asphalt Run precisa da sua localização para rastrear corridas."
+        }
+      ],
+      "react-native-maps"
+    ],
+    "scheme": "asphaltrun",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {}
+    }
+  }
+}

@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import MapView, { Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
+import RunMap from '@/components/RunMap';
 import * as Location from 'expo-location';
 import { Pause, Play, Square, X } from 'lucide-react-native';
 import { AppColors } from '@/constants/AppColors';
@@ -16,7 +16,7 @@ type RunState = 'running' | 'paused';
 export default function ActiveRunScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
 
   const [runState, setRunState] = useState<RunState>('running');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -197,28 +197,16 @@ export default function ActiveRunScreen() {
 
       {/* Map */}
       <View style={styles.mapContainer}>
-        <MapView
+        <RunMap
           ref={mapRef}
-          style={StyleSheet.absoluteFillObject}
-          provider={PROVIDER_DEFAULT}
-          userInterfaceStyle="dark"
-          showsUserLocation
-          followsUserLocation={false}
+          polylineCoords={polylineCoords}
           initialRegion={{
             latitude: routePoints[0]?.lat ?? -23.5505,
             longitude: routePoints[0]?.lng ?? -46.6333,
             latitudeDelta: 0.005,
             longitudeDelta: 0.005,
           }}
-        >
-          {polylineCoords.length > 1 && (
-            <Polyline
-              coordinates={polylineCoords}
-              strokeColor={AppColors.accent}
-              strokeWidth={4}
-            />
-          )}
-        </MapView>
+        />
       </View>
 
       {/* Controls */}

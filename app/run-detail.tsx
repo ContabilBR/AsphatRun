@@ -4,8 +4,8 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import MapView, { Polyline, Marker, PROVIDER_DEFAULT } from 'react-native-maps';
-import { ChevronLeft, Flag, Share2 } from 'lucide-react-native';
+import { ChevronLeft, Share2 } from 'lucide-react-native';
+import RouteMap from '@/components/RouteMap';
 import { AppColors } from '@/constants/AppColors';
 import { saveRun, getRunById, Run } from '@/utils/database';
 import { formatDistance, formatDuration, formatPace, formatDate } from '@/utils/runUtils';
@@ -88,34 +88,6 @@ export default function RunDetailScreen() {
     );
   }
 
-  const polylineCoords = run.route_points.map(p => ({ latitude: p.lat, longitude: p.lng }));
-  const startPoint = run.route_points[0];
-  const endPoint = run.route_points[run.route_points.length - 1];
-  const hasMultiplePoints = run.route_points.length > 1;
-  const isEndDifferent = endPoint && endPoint !== startPoint;
-
-  // Compute map region to fit all points
-  let region = {
-    latitude: startPoint?.lat ?? -23.5505,
-    longitude: startPoint?.lng ?? -46.6333,
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
-  };
-  if (run.route_points.length > 1) {
-    const lats = run.route_points.map(p => p.lat);
-    const lngs = run.route_points.map(p => p.lng);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-    const minLng = Math.min(...lngs);
-    const maxLng = Math.max(...lngs);
-    region = {
-      latitude: (minLat + maxLat) / 2,
-      longitude: (minLng + maxLng) / 2,
-      latitudeDelta: Math.max((maxLat - minLat) * 1.4, 0.005),
-      longitudeDelta: Math.max((maxLng - minLng) * 1.4, 0.005),
-    };
-  }
-
   const isPostRun = params.mode === 'post-run';
   const headerTitle = isPostRun ? 'Corrida finalizada' : formatDate(run.date);
 
@@ -140,36 +112,7 @@ export default function RunDetailScreen() {
 
       {/* Map */}
       <View style={styles.mapContainer}>
-        <MapView
-          style={StyleSheet.absoluteFillObject}
-          provider={PROVIDER_DEFAULT}
-          userInterfaceStyle="dark"
-          region={region}
-          scrollEnabled={false}
-          zoomEnabled={false}
-          rotateEnabled={false}
-          pitchEnabled={false}
-        >
-          {hasMultiplePoints && (
-            <Polyline
-              coordinates={polylineCoords}
-              strokeColor={AppColors.accent}
-              strokeWidth={4}
-            />
-          )}
-          {startPoint && (
-            <Marker coordinate={{ latitude: startPoint.lat, longitude: startPoint.lng }}>
-              <View style={styles.startMarker} />
-            </Marker>
-          )}
-          {isEndDifferent && (
-            <Marker coordinate={{ latitude: endPoint.lat, longitude: endPoint.lng }}>
-              <View style={styles.endMarkerContainer}>
-                <Flag color={AppColors.accent} size={20} fill={AppColors.accent} />
-              </View>
-            </Marker>
-          )}
-        </MapView>
+        <RouteMap routePoints={run.route_points} />
       </View>
 
       {/* Metrics */}
@@ -309,16 +252,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-  },
-  startMarker: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2.5,
-    borderColor: AppColors.textPrimary,
-    backgroundColor: 'transparent',
-  },
-  endMarkerContainer: {
-    padding: 2,
   },
 });

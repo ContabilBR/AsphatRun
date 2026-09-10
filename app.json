@@ -15,7 +15,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.placeholder.app",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["location"]
       },
       "config": {
         "googleMapsApiKey": ""
@@ -31,7 +32,8 @@
         "googleMaps": {
           "apiKey": ""
         }
-      }
+      },
+      "permissions": ["ACCESS_BACKGROUND_LOCATION", "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
     },
     "web": {
       "favicon": "./assets/images/newly.png",
@@ -46,10 +48,12 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Asphalt Run precisa da sua localização para rastrear corridas.",
-          "locationWhenInUsePermission": "Asphalt Run precisa da sua localização para rastrear corridas."
+          "locationAlwaysAndWhenInUsePermission": "Asphalt Run precisa da sua localização em segundo plano para continuar rastreando sua corrida com o app minimizado.",
+          "locationWhenInUsePermission": "Asphalt Run precisa da sua localização para rastrear corridas.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
         }
-      ],
+      ]
     ],
     "scheme": "asphaltrun",
     "experiments": {

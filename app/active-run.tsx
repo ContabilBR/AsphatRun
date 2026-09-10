@@ -1,15 +1,25 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, Alert,
+  View, Text, StyleSheet, Pressable, Alert, AppState, AppStateStatus,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import RunMap from '@/components/RunMap';
 import * as Location from 'expo-location';
 import { Pause, Play, Square, X } from 'lucide-react-native';
 import { AppColors } from '@/constants/AppColors';
-import { formatDistance, formatDuration, formatPace, calcDistance } from '@/utils/runUtils';
+import { formatDistance, formatDuration, formatPace } from '@/utils/runUtils';
+import {
+  setActiveRunValue,
+  getActiveRunValue,
+  clearActiveRunState,
+  getActiveRunPoints,
+} from '@/utils/database';
 import type { RoutePoint } from '@/utils/database';
+import {
+  startBackgroundLocationTask,
+  stopBackgroundLocationTask,
+} from '@/utils/backgroundTask';
+import RunMap from '@/components/RunMap';
 
 type RunState = 'running' | 'paused';
 
@@ -24,106 +34,183 @@ export default function ActiveRunScreen() {
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
   const [locationPermission, setLocationPermission] = useState<boolean | null>(null);
 
+  // Wall-clock timer refs
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const locationSubRef = useRef<Location.LocationSubscription | null>(null);
-  const lastPointRef = useRef<RoutePoint | null>(null);
   const runStateRef = useRef<RunState>('running');
 
-  // Keep ref in sync with state
-  useEffect(() => {
-    runStateRef.current = runState;
-  }, [runState]);
+  useEffect(() => { runStateRef.current = runState; }, [runState]);
 
-  const stopTracking = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (locationSubRef.current) locationSubRef.current.remove();
+  // Compute elapsed seconds from persisted start time and paused duration
+  const computeElapsed = useCallback(async (): Promise<number> => {
+    const startStr = await getActiveRunValue('start_time');
+    const pausedStr = await getActiveRunValue('paused_duration_ms');
+    const isPausedStr = await getActiveRunValue('is_paused');
+    const pauseStartStr = await getActiveRunValue('pause_start_time');
+
+    if (!startStr) return 0;
+
+    const startTime = parseInt(startStr, 10);
+    const pausedDuration = pausedStr ? parseInt(pausedStr, 10) : 0;
+    const isPaused = isPausedStr === 'true';
+
+    let now = Date.now();
+    // If currently paused, don't count time since pause started
+    if (isPaused && pauseStartStr) {
+      now = parseInt(pauseStartStr, 10);
+    }
+
+    const totalMs = now - startTime - pausedDuration;
+    return Math.max(0, Math.floor(totalMs / 1000));
   }, []);
 
-  const startTracking = useCallback(async () => {
-    console.log('[ActiveRun] startTracking — starting timer and location watch');
+  // Sync state from SQLite (called on foreground return and on interval)
+  const syncFromStorage = useCallback(async () => {
+    const [elapsed, dist, points] = await Promise.all([
+      computeElapsed(),
+      getActiveRunValue('distance_meters').then(v => v ? parseFloat(v) : 0),
+      getActiveRunPoints(),
+    ]);
+    setElapsedSeconds(elapsed);
+    setDistanceMeters(dist);
+    setRoutePoints(points);
 
-    // Timer
-    timerRef.current = setInterval(() => {
+    // Pan map to last point
+    if (points.length > 0) {
+      const last = points[points.length - 1];
+      mapRef.current?.animateToRegion?.({
+        latitude: last.lat,
+        longitude: last.lng,
+        latitudeDelta: 0.005,
+        longitudeDelta: 0.005,
+      }, 500);
+    }
+  }, [computeElapsed]);
+
+  // Start the UI refresh interval
+  const startUITimer = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(async () => {
       if (runStateRef.current === 'running') {
-        setElapsedSeconds(s => s + 1);
+        await syncFromStorage();
       }
     }, 1000);
+  }, [syncFromStorage]);
 
-    // Location
-    locationSubRef.current = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.BestForNavigation,
-        timeInterval: 5000,
-        distanceInterval: 5,
-      },
-      (loc) => {
-        if (runStateRef.current !== 'running') return;
-        const point: RoutePoint = {
-          lat: loc.coords.latitude,
-          lng: loc.coords.longitude,
-          timestamp: loc.timestamp,
-        };
-        console.log('[ActiveRun] location update', { lat: point.lat, lng: point.lng });
-        setRoutePoints(prev => [...prev, point]);
-        if (lastPointRef.current) {
-          const d = calcDistance(
-            lastPointRef.current.lat, lastPointRef.current.lng,
-            point.lat, point.lng
-          );
-          console.log('[ActiveRun] distance delta', d.toFixed(1), 'm');
-          setDistanceMeters(prev => prev + d);
-        }
-        lastPointRef.current = point;
-
-        // Pan map to current position
-        mapRef.current?.animateToRegion({
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-          latitudeDelta: 0.005,
-          longitudeDelta: 0.005,
-        }, 500);
-      }
-    );
+  const stopUITimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
   }, []);
 
-  // Request permissions and start tracking
+  // AppState listener — sync when returning to foreground
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextState: AppStateStatus) => {
+      console.log('[ActiveRun] AppState changed to:', nextState);
+      if (nextState === 'active') {
+        console.log('[ActiveRun] returned to foreground — syncing state from storage');
+        await syncFromStorage();
+        if (runStateRef.current === 'running') startUITimer();
+      } else if (nextState === 'background' || nextState === 'inactive') {
+        console.log('[ActiveRun] going to background — stopping UI timer');
+        stopUITimer();
+      }
+    });
+    return () => subscription.remove();
+  }, [syncFromStorage, startUITimer, stopUITimer]);
+
+  // Initialize run on mount
   useEffect(() => {
     (async () => {
-      console.log('[ActiveRun] requesting foreground location permission');
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        console.log('[ActiveRun] location permission denied');
+      console.log('[ActiveRun] initializing — requesting location permissions');
+      const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
+      if (fgStatus !== 'granted') {
+        console.log('[ActiveRun] foreground location permission denied');
         setLocationPermission(false);
         return;
       }
-      console.log('[ActiveRun] location permission granted');
+      console.log('[ActiveRun] foreground location permission granted');
+
+      const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
+      console.log('[ActiveRun] background location permission:', bgStatus);
+
       setLocationPermission(true);
-      startTracking();
+
+      // Persist run start state
+      const now = Date.now();
+      console.log('[ActiveRun] starting new run, timestamp:', now);
+      await clearActiveRunState();
+      await setActiveRunValue('start_time', String(now));
+      await setActiveRunValue('paused_duration_ms', '0');
+      await setActiveRunValue('is_paused', 'false');
+      await setActiveRunValue('distance_meters', '0');
+
+      // Start background location task
+      await startBackgroundLocationTask();
+
+      // Start UI refresh
+      startUITimer();
     })();
 
     return () => {
-      stopTracking();
+      stopUITimer();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handlePauseResume = () => {
-    const next = runState === 'running' ? 'paused' : 'running';
-    console.log('[ActiveRun] pause/resume pressed — new state:', next);
-    setRunState(next);
+  const handlePauseResume = async () => {
+    if (runState === 'running') {
+      console.log('[ActiveRun] pause pressed');
+      const pauseStart = Date.now();
+      await setActiveRunValue('is_paused', 'true');
+      await setActiveRunValue('pause_start_time', String(pauseStart));
+      setRunState('paused');
+      runStateRef.current = 'paused';
+      stopUITimer();
+    } else {
+      console.log('[ActiveRun] resume pressed');
+      const pauseStartStr = await getActiveRunValue('pause_start_time');
+      const pausedDurStr = await getActiveRunValue('paused_duration_ms');
+      if (pauseStartStr) {
+        const additionalPause = Date.now() - parseInt(pauseStartStr, 10);
+        const existing = pausedDurStr ? parseInt(pausedDurStr, 10) : 0;
+        const newTotal = existing + additionalPause;
+        console.log('[ActiveRun] resuming — adding', additionalPause, 'ms to paused duration, total:', newTotal, 'ms');
+        await setActiveRunValue('paused_duration_ms', String(newTotal));
+      }
+      await setActiveRunValue('is_paused', 'false');
+      await setActiveRunValue('pause_start_time', '');
+      setRunState('running');
+      runStateRef.current = 'running';
+      startUITimer();
+    }
   };
 
-  const handleFinish = () => {
-    console.log('[ActiveRun] finish pressed — duration:', elapsedSeconds, 's, distance:', distanceMeters.toFixed(1), 'm');
-    stopTracking();
-    const avgPace = distanceMeters > 0 ? (elapsedSeconds / (distanceMeters / 1000)) : 0;
+  const handleFinish = async () => {
+    console.log('[ActiveRun] finish pressed');
+    stopUITimer();
+    await stopBackgroundLocationTask();
+
+    // Final sync
+    const [finalElapsed, finalDist, finalPoints] = await Promise.all([
+      computeElapsed(),
+      getActiveRunValue('distance_meters').then(v => v ? parseFloat(v) : 0),
+      getActiveRunPoints(),
+    ]);
+
+    console.log('[ActiveRun] run finished — duration:', finalElapsed, 's, distance:', finalDist.toFixed(1), 'm, points:', finalPoints.length);
+
+    await clearActiveRunState();
+
+    const avgPace = finalDist > 0 ? (finalElapsed / (finalDist / 1000)) : 0;
     router.replace({
       pathname: '/run-detail',
       params: {
         mode: 'post-run',
-        duration_seconds: String(elapsedSeconds),
-        distance_meters: String(distanceMeters),
+        duration_seconds: String(finalElapsed),
+        distance_meters: String(finalDist),
         avg_pace_seconds_per_km: String(avgPace),
-        route_points: JSON.stringify(routePoints),
+        route_points: JSON.stringify(finalPoints),
         date: new Date().toISOString(),
       },
     });
@@ -135,9 +222,11 @@ export default function ActiveRunScreen() {
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Descartar', style: 'destructive',
-        onPress: () => {
-          console.log('[ActiveRun] discard confirmed — going back');
-          stopTracking();
+        onPress: async () => {
+          console.log('[ActiveRun] discard confirmed — stopping task and going back');
+          stopUITimer();
+          await stopBackgroundLocationTask();
+          await clearActiveRunState();
           router.back();
         },
       },
@@ -146,11 +235,12 @@ export default function ActiveRunScreen() {
 
   const pace = distanceMeters > 0 ? elapsedSeconds / (distanceMeters / 1000) : 0;
   const polylineCoords = routePoints.map(p => ({ latitude: p.lat, longitude: p.lng }));
+  const isPaused = runState === 'paused';
 
   const distanceDisplay = formatDistance(distanceMeters);
   const durationDisplay = formatDuration(elapsedSeconds);
   const paceDisplay = formatPace(pace);
-  const isPaused = runState === 'paused';
+  const pauseResumeLabel = isPaused ? 'Retomar' : 'Pausar';
 
   if (locationPermission === false) {
     return (
@@ -171,7 +261,7 @@ export default function ActiveRunScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Discard button top-left */}
+      {/* Discard button */}
       <Pressable style={[styles.discardBtn, { top: insets.top + 12 }]} onPress={handleDiscard}>
         <X color={AppColors.textSecondary} size={22} />
       </Pressable>
@@ -190,9 +280,7 @@ export default function ActiveRunScreen() {
             <Text style={styles.metricLabel}>ritmo</Text>
           </View>
         </View>
-        {isPaused && (
-          <Text style={styles.pausedLabel}>PAUSADO</Text>
-        )}
+        {isPaused && <Text style={styles.pausedLabel}>PAUSADO</Text>}
       </View>
 
       {/* Map */}
@@ -215,9 +303,8 @@ export default function ActiveRunScreen() {
           {isPaused
             ? <Play color={AppColors.textPrimary} size={24} />
             : <Pause color={AppColors.textPrimary} size={24} />}
-          <Text style={styles.pauseLabel}>{isPaused ? 'Retomar' : 'Pausar'}</Text>
+          <Text style={styles.pauseLabel}>{pauseResumeLabel}</Text>
         </Pressable>
-
         <Pressable style={styles.finishButton} onPress={handleFinish}>
           <Square color={AppColors.background} size={22} fill={AppColors.background} />
           <Text style={styles.finishLabel}>Finalizar</Text>
@@ -228,131 +315,25 @@ export default function ActiveRunScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: AppColors.background,
-  },
-  centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-    gap: 16,
-  },
-  discardBtn: {
-    position: 'absolute',
-    left: 16,
-    zIndex: 10,
-    padding: 8,
-  },
-  metricsPanel: {
-    paddingTop: 48,
-    paddingBottom: 20,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    gap: 12,
-  },
-  distanceLarge: {
-    fontSize: 64,
-    fontFamily: 'SpaceMono',
-    fontWeight: '500',
-    color: AppColors.textPrimary,
-    letterSpacing: -1,
-  },
-  metricsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 24,
-  },
-  metricItem: {
-    alignItems: 'center',
-    gap: 2,
-  },
-  metricValue: {
-    fontSize: 22,
-    fontFamily: 'SpaceMono',
-    fontWeight: '500',
-    color: AppColors.textPrimary,
-  },
-  metricLabel: {
-    fontSize: 12,
-    color: AppColors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  metricDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 36,
-    backgroundColor: AppColors.textSecondary + '66',
-  },
-  pausedLabel: {
-    fontSize: 12,
-    color: AppColors.accent,
-    fontWeight: '600',
-    letterSpacing: 1.5,
-  },
-  mapContainer: {
-    flex: 1,
-  },
-  controls: {
-    flexDirection: 'row',
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    gap: 12,
-    backgroundColor: AppColors.background,
-  },
-  pauseButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: AppColors.textSecondary + '88',
-  },
-  pauseLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: AppColors.textPrimary,
-  },
-  finishButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 12,
-    backgroundColor: AppColors.accent,
-  },
-  finishLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: AppColors.background,
-  },
-  permissionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: AppColors.textPrimary,
-    textAlign: 'center',
-  },
-  permissionText: {
-    fontSize: 15,
-    color: AppColors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  backButton: {
-    marginTop: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: AppColors.textSecondary,
-  },
-  backButtonText: {
-    fontSize: 15,
-    color: AppColors.textPrimary,
-  },
+  container: { flex: 1, backgroundColor: AppColors.background },
+  centered: { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, gap: 16 },
+  discardBtn: { position: 'absolute', left: 16, zIndex: 10, padding: 8 },
+  metricsPanel: { paddingTop: 48, paddingBottom: 20, paddingHorizontal: 24, alignItems: 'center', gap: 12 },
+  distanceLarge: { fontSize: 64, fontFamily: 'SpaceMono', fontWeight: '500', color: AppColors.textPrimary, letterSpacing: -1 },
+  metricsRow: { flexDirection: 'row', alignItems: 'center', gap: 24 },
+  metricItem: { alignItems: 'center', gap: 2 },
+  metricValue: { fontSize: 22, fontFamily: 'SpaceMono', fontWeight: '500', color: AppColors.textPrimary },
+  metricLabel: { fontSize: 12, color: AppColors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.6 },
+  metricDivider: { width: StyleSheet.hairlineWidth, height: 36, backgroundColor: AppColors.textSecondary + '66' },
+  pausedLabel: { fontSize: 12, color: AppColors.accent, fontWeight: '600', letterSpacing: 1.5 },
+  mapContainer: { flex: 1 },
+  controls: { flexDirection: 'row', paddingHorizontal: 24, paddingTop: 16, gap: 12, backgroundColor: AppColors.background },
+  pauseButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 12, borderWidth: 1.5, borderColor: AppColors.textSecondary + '88' },
+  pauseLabel: { fontSize: 16, fontWeight: '600', color: AppColors.textPrimary },
+  finishButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 12, backgroundColor: AppColors.accent },
+  finishLabel: { fontSize: 16, fontWeight: '600', color: AppColors.background },
+  permissionTitle: { fontSize: 20, fontWeight: '700', color: AppColors.textPrimary, textAlign: 'center' },
+  permissionText: { fontSize: 15, color: AppColors.textSecondary, textAlign: 'center', lineHeight: 22 },
+  backButton: { marginTop: 8, paddingVertical: 12, paddingHorizontal: 32, borderRadius: 10, borderWidth: 1, borderColor: AppColors.textSecondary },
+  backButtonText: { fontSize: 15, color: AppColors.textPrimary },
 });
